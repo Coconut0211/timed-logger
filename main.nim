@@ -46,7 +46,10 @@ proc newTimedRotatingFileHandler(
   result.whenInterval = whenInterval
   result.interval = interval
   result.backupCount = backupCount
-  result.currentFile = open(filename, fmAppend)
+  if not filename.splitPath().head.dirExists():
+    createDir(filename.splitPath().head)
+  let currentTime =  format(getTime(),"yyyy'_'MM'_'dd'_'HH'_'mm'_'ss")
+  result.currentFile = open(result.filename.splitPath().head / join([currentTime,result.filename.tailDir()]), fmAppend)
   result.nextRolloverTime = calculateNextRolloverTime(result.whenInterval, result.interval)
 
 
@@ -54,10 +57,10 @@ proc rotateFile(logger: TimedRollingFileHandler) =
   ## Выполняет ротацию файла.
   logger.currentFile.close()
   let currentTime =  format(getTime(),"yyyy'_'MM'_'dd'_'HH'_'mm'_'ss")
-  logger.currentFile = open(join([currentTime,logger.filename]), fmAppend)
+  logger.currentFile = open(logger.filename.splitPath().head / join([currentTime,logger.filename.tailDir()]), fmAppend)
 
   # Удаляем старые файлы, если их слишком много
-  var logFiles = toSeq(walkFiles("*.log"))  # Так можно получить список всех логов, если изначально задано такое расширение.
+  var logFiles = toSeq(walkFiles(logger.filename.splitPath().head / "*.log"))  # Так можно получить список всех логов, если изначально задано такое расширение.
   logFiles.sort() # Отсортируем по старшинству
   if logFiles.len > logger.backupCount:
     for i in 0 ..< logFiles.len - logger.backupCount:
@@ -87,15 +90,15 @@ proc log(logger: TimedRollingFileHandler, level: Level, args: varargs[string, `$
 
 # Пример использования
 var logger = newTimedRotatingFileHandler(
-    filename="app.log",
+    filename="logs" / "app.log",
     whenInterval='S',
     interval=5,
-    backupCount=5,
+    backupCount=2,
     fmtStr="[$date $time][$levelname] "
 )
 
 var i = 1
-while i < 20:
+while i < 40:
   logger.log(lvlDebug, "1")
   logger.log(lvlInfo, "2")
   logger.log(lvlNotice, "3")
