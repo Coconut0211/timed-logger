@@ -10,6 +10,7 @@ type
     ## currentFile - текущий файл для записи
     ## nextRolloverTime - когда следующая ротация
     filename: string
+    dirname: string
     whenInterval: char  
     interval: int
     backupCount: int
@@ -33,7 +34,7 @@ proc calculateNextRolloverTime(whenInterval: char, interval: int): Time =
 
 
 proc newTimedRotatingFileHandler(
-    filename: string,
+    filePath: string,
     whenInterval: char,
     interval: int,
     backupCount: int,
@@ -41,15 +42,17 @@ proc newTimedRotatingFileHandler(
   ): TimedRollingFileHandler =
   ## Создает новый обработчик с ротацией по времени.
   new(result)
-  result.filename = filename
+  result.filename = filePath.splitPath().tail
+  result.dirname = getAppDir()
+  if filePath.splitPath().head != "":
+    result.dirname = filePath.splitPath().head
   result.fmtStr = fmtStr
   result.whenInterval = whenInterval
   result.interval = interval
   result.backupCount = backupCount
-  if not filename.splitPath().head.dirExists():
-    createDir(filename.splitPath().head)
-  let currentTime =  format(getTime(),"yyyy'_'MM'_'dd'_'HH'_'mm'_'ss")
-  result.currentFile = open(result.filename.splitPath().head / join([currentTime,result.filename.tailDir()]), fmAppend)
+  if not result.dirname.dirExists():
+    createDir(result.dirname)
+  result.currentFile = open(filePath, fmAppend)
   result.nextRolloverTime = calculateNextRolloverTime(result.whenInterval, result.interval)
 
 
@@ -57,10 +60,11 @@ proc rotateFile(logger: TimedRollingFileHandler) =
   ## Выполняет ротацию файла.
   logger.currentFile.close()
   let currentTime =  format(getTime(),"yyyy'_'MM'_'dd'_'HH'_'mm'_'ss")
-  logger.currentFile = open(logger.filename.splitPath().head / join([currentTime,logger.filename.tailDir()]), fmAppend)
+  moveFile(logger.dirname / logger.filename, logger.dirname / join([currentTime,logger.filename]))
+  logger.currentFile = open(logger.dirname / logger.filename, fmAppend)
 
   # Удаляем старые файлы, если их слишком много
-  var logFiles = toSeq(walkFiles(logger.filename.splitPath().head / "*.log"))  # Так можно получить список всех логов, если изначально задано такое расширение.
+  var logFiles = toSeq(walkFiles(logger.dirname / "*.log"))  # Так можно получить список всех логов, если изначально задано такое расширение.
   logFiles.sort() # Отсортируем по старшинству
   if logFiles.len > logger.backupCount:
     for i in 0 ..< logFiles.len - logger.backupCount:
@@ -90,10 +94,10 @@ proc log(logger: TimedRollingFileHandler, level: Level, args: varargs[string, `$
 
 # Пример использования
 var logger = newTimedRotatingFileHandler(
-    filename="logs" / "app.log",
+    filePath= "logs" / "app.log",
     whenInterval='S',
     interval=5,
-    backupCount=2,
+    backupCount=3,
     fmtStr="[$date $time][$levelname] "
 )
 
